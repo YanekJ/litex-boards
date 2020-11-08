@@ -22,15 +22,11 @@ from litex.soc.cores.led import LedChaser
 
 from litex_boards.platforms import tec0117
 
-from spiflash.serialflash import SerialFlashManager
-
 kB = 1024
 mB = 1024*kB
 
 class BaseSoC(SoCCore):
-
     mem_map = {**SoCCore.mem_map, **{"spiflash": 0x80000000}}
-
     def __init__(self, bios_flash_offset, **kwargs):
         platform     = tec0117.Platform()
         sys_clk_freq = int(1e9/platform.default_clk_period)
@@ -73,6 +69,7 @@ class BaseSoC(SoCCore):
 # Flash --------------------------------------------------------------------------------------------
 
 def flash(offset, path):
+    from spiflash.serialflash import SerialFlashManager
     platform = tec0117.Platform()
     flash = platform.request("spiflash", 0)
     bus = platform.request("spiflash", 1)

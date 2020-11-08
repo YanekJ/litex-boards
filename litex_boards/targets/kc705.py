@@ -30,6 +30,7 @@ from liteeth.phy import LiteEthPHY
 
 class _CRG(Module):
     def __init__(self, platform, sys_clk_freq):
+        self.rst = Signal()
         self.clock_domains.cd_sys    = ClockDomain()
         self.clock_domains.cd_sys4x  = ClockDomain(reset_less=True)
         self.clock_domains.cd_idelay = ClockDomain()
@@ -37,7 +38,7 @@ class _CRG(Module):
         # # #
 
         self.submodules.pll = pll = S7MMCM(speedgrade=-2)
-        self.comb += pll.reset.eq(platform.request("cpu_reset"))
+        self.comb += pll.reset.eq(platform.request("cpu_reset") | self.rst)
         pll.register_clkin(platform.request("clk200"), 200e6)
         pll.create_clkout(self.cd_sys,    sys_clk_freq)
         pll.create_clkout(self.cd_sys4x,  4*sys_clk_freq)
@@ -48,7 +49,7 @@ class _CRG(Module):
 # BaseSoC ------------------------------------------------------------------------------------------
 
 class BaseSoC(SoCCore):
-    def __init__(self, sys_clk_freq=int(150e6), with_ethernet=False, with_sata=False, **kwargs):
+    def __init__(self, sys_clk_freq=int(125e6), with_ethernet=False, with_sata=False, **kwargs):
         platform = kc705.Platform()
 
         # SoCCore ----------------------------------------------------------------------------------
@@ -86,23 +87,19 @@ class BaseSoC(SoCCore):
             self.add_csr("ethphy")
             self.add_ethernet(phy=self.ethphy)
 
-        # SATA (Experimental) ----------------------------------------------------------------------
+        # SATA -------------------------------------------------------------------------------------
         if with_sata:
             from litex.build.generic_platform import Subsignal, Pins
-            from litex.soc.interconnect import wishbone
             from litesata.phy import LiteSATAPHY
-            from litesata.core import LiteSATACore
-            from litesata.frontend.arbitration import LiteSATACrossbar
-            from litesata.frontend.dma import LiteSATABlock2MemDMA
 
             # IOs
             _sata_io = [
                 # SFP 2 SATA Adapter / https://shop.trenz-electronic.de/en/TE0424-01-SFP-2-SATA-Adapter
-                ("sfp", 0,
-                    Subsignal("txp", Pins("H2")),
-                    Subsignal("txn", Pins("H1")),
-                    Subsignal("rxp", Pins("G4")),
-                    Subsignal("rxn", Pins("G3")),
+                ("sfp2sata", 0,
+                    Subsignal("tx_p", Pins("H2")),
+                    Subsignal("tx_n", Pins("H1")),
+                    Subsignal("rx_p", Pins("G4")),
+                    Subsignal("rx_n", Pins("G3")),
                 ),
             ]
             platform.add_extension(_sata_io)
@@ -116,33 +113,14 @@ class BaseSoC(SoCCore):
             # PHY
             self.submodules.sata_phy = LiteSATAPHY(platform.device,
                 refclk     = sata_refclk,
-                pads       = platform.request("sfp"),
-                gen        = "gen1",
+                pads       = platform.request("sfp2sata"),
+                gen        = "gen2",
                 clk_freq   = sys_clk_freq,
                 data_width = 16)
+            self.add_csr("sata_phy")
 
             # Core
-            self.submodules.sata_core = LiteSATACore(self.sata_phy)
-
-            # Crossbar
-            self.submodules.sata_crossbar = LiteSATACrossbar(self.sata_core)
-
-            # Block2Mem DMA
-            bus =  wishbone.Interface(data_width=32, adr_width=32)
-            self.submodules.sata_block2mem = LiteSATABlock2MemDMA(
-                user_port  = self.sata_crossbar.get_port(),
-                bus        = bus,
-                endianness = self.cpu.endianness)
-            self.bus.add_master("sata_block2mem", master=bus)
-            self.add_csr("sata_block2mem")
-
-            # Timing constraints
-            platform.add_period_constraint(self.sata_phy.crg.cd_sata_tx.clk, 1e9/75e6)
-            platform.add_period_constraint(self.sata_phy.crg.cd_sata_tx.clk, 1e9/75e6)
-            self.platform.add_false_path_constraints(
-                self.crg.cd_sys.clk,
-                self.sata_phy.crg.cd_sata_tx.clk,
-                self.sata_phy.crg.cd_sata_tx.clk)
+            self.add_sata(phy=self.sata_phy, mode="read+write")
 
         # Leds -------------------------------------------------------------------------------------
         self.submodules.leds = LedChaser(

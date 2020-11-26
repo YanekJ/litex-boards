@@ -10,13 +10,13 @@
 #
 # 1) SoC with regular UART and optional Ethernet connected to the CPU:
 # Connect a USB/UART to J19: TX of the FPGA is DATA_LED-, RX of the FPGA is KEY+.
-# ./colorlight_5a_75x.py --revision=7.0 (or 6.1) (--with-ethernet to add Ethernet capability)
+# ./colorlight_5a_75x.py --revision=7.0 (or 6.1)  --build (--with-ethernet to add Ethernet capability)
 # Note: on revision 6.1, add --uart-baudrate=9600 to lower the baudrate.
 # ./colorlight_5a_75x.py --load
 # You should see the LiteX BIOS and be able to interact with it.
 #
 # 2) SoC with UART in crossover mode over Etherbone:
-# ./colorlight_5a_75x.py --revision=7.0 (or 6.1) --uart-name=crossover --with-etherbone --csr-csv=csr.csv
+# ./colorlight_5a_75x.py --revision=7.0 (or 6.1) --uart-name=crossover --with-etherbone --csr-csv=csr.csv --build
 # ./colorlight_5a_75x.py --load
 # ping 192.168.1.50
 # Get and install wishbone tool from: https://github.com/litex-hub/wishbone-utils/releases
@@ -29,12 +29,12 @@
 # - Place a 15K resistor between J4 pin 3 and J4 pin 4.
 # - Place a 1.5K resistor between J4 pin 1 and J4 pin 3.
 # - Connect USB DP (Green) to J4 pin 3, USB DN (White) to J4 pin 2.
-# ./colorlight_5a_75x.py --revision=7.0 --uart-name=usb_acm
+# ./colorlight_5a_75x.py --revision=7.0 --uart-name=usb_acm  --build
 # ./colorlight_5a_75x.py --load
 # You should see the LiteX BIOS and be able to interact with it.
 #
 # Note that you can also use a 5A-75E board:
-# ./colorlight_5a_75x.py --board=5a-75e --revision=7.1 (or 6.0)
+# ./colorlight_5a_75x.py --board=5a-75e --revision=7.1 (or 6.0) --build
 #
 # Disclaimer: SoC 2) is still a Proof of Concept with large timings violations on the IP/UDP and
 # Etherbone stack that need to be optimized. It was initially just used to validate the reversed
@@ -56,6 +56,7 @@ from litex.build.lattice.trellis import trellis_args, trellis_argdict
 from litex.soc.cores.clock import *
 from litex.soc.integration.soc_core import *
 from litex.soc.integration.builder import *
+from litex.soc.cores.led import LedChaser
 
 from litedram.modules import M12L16161A, M12L64322A
 from litedram.phy import GENSDRPHY, HalfRateGENSDRPHY
@@ -164,12 +165,19 @@ class BaseSoC(SoCCore):
         if with_ethernet or with_etherbone:
             self.submodules.ethphy = LiteEthPHYRGMII(
                 clock_pads = self.platform.request("eth_clocks", eth_phy),
-                pads       = self.platform.request("eth", eth_phy))
+                pads       = self.platform.request("eth", eth_phy),
+                tx_delay   = 0e-9)
             self.add_csr("ethphy")
             if with_ethernet:
                 self.add_ethernet(phy=self.ethphy)
             if with_etherbone:
                 self.add_etherbone(phy=self.ethphy)
+
+        # Leds -------------------------------------------------------------------------------------
+        self.submodules.leds = LedChaser(
+            pads         = platform.request_all("user_led_n"),
+            sys_clk_freq = sys_clk_freq)
+        self.add_csr("leds")
 
 # Build --------------------------------------------------------------------------------------------
 

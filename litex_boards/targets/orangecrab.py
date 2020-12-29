@@ -69,7 +69,7 @@ class _CRG(Module):
         reset_timer = WaitTimer(sys_clk_freq)
         self.submodules += reset_timer
         self.comb += reset_timer.wait.eq(~rst_n)
-        self.comb += platform.request("rst_n").eq(reset_timer.done)
+        self.comb += platform.request("rst_n").eq(~reset_timer.done)
 
 
 class _CRGSDRAM(Module):
@@ -180,7 +180,8 @@ class BaseSoC(SoCCore):
             ddram_pads = platform.request("ddram")
             self.submodules.ddrphy = ECP5DDRPHY(
                 pads         = ddram_pads,
-                sys_clk_freq = sys_clk_freq)
+                sys_clk_freq = sys_clk_freq,
+                dm_remapping = {0:1, 1:0})
             self.ddrphy.settings.rtt_nom = "disabled"
             self.add_csr("ddrphy")
             if hasattr(ddram_pads, "vccio"):

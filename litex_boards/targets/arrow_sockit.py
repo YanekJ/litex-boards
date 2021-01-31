@@ -1,28 +1,24 @@
 #!/usr/bin/env python3
-
 #
 # This file is part of LiteX-Boards.
 #
-# Copyright (c) 2019 Antony Pavlov <antonynpavlov@gmail.com>
+# Copyright (c) 2020 Hans Baier <hansfbaier@gmail.com>
 # SPDX-License-Identifier: BSD-2-Clause
 
 import os
 import argparse
 
-from migen import *
+from migen.fhdl.module      import Module
+from migen.fhdl.structure   import Signal, ClockDomain
 from migen.genlib.resetsync import AsyncResetSynchronizer
 
-from litex.build.io import DDROutput
+from litex.soc.cores.clock           import CycloneVPLL
+from litex.soc.integration.builder   import Builder, builder_args, builder_argdict
+from litex.soc.integration.soc_core  import SoCCore
+from litex.soc.integration.soc_sdram import soc_sdram_argdict, soc_sdram_args
+from litex.soc.cores.led             import LedChaser
 
-from litex_boards.platforms import de1soc
-
-from litex.soc.cores.clock import CycloneVPLL
-from litex.soc.integration.soc_core import *
-from litex.soc.integration.soc_sdram import *
-from litex.soc.integration.builder import *
-
-from litedram.modules import IS42S16320
-from litedram.phy import GENSDRPHY
+from litex_boards.platforms import arrow_sockit
 
 # CRG ----------------------------------------------------------------------------------------------
 
@@ -31,8 +27,6 @@ class _CRG(Module):
         self.rst = Signal()
         self.clock_domains.cd_sys    = ClockDomain()
         self.clock_domains.cd_sys_ps = ClockDomain(reset_less=True)
-
-        # # #
 
         # Clk / Rst
         clk50 = platform.request("clk50")
@@ -44,43 +38,39 @@ class _CRG(Module):
         pll.create_clkout(self.cd_sys,    sys_clk_freq)
         pll.create_clkout(self.cd_sys_ps, sys_clk_freq, phase=90)
 
-        # SDRAM clock
-        self.specials += DDROutput(1, 0, platform.request("sdram_clock"), ClockSignal("sys_ps"))
-
 # BaseSoC ------------------------------------------------------------------------------------------
 
 class BaseSoC(SoCCore):
-    def __init__(self, sys_clk_freq=int(50e6), **kwargs):
-        platform = de1soc.Platform()
+    def __init__(self, sys_clk_freq=int(50e6), revision="revd", **kwargs):
+        platform = arrow_sockit.Platform(revision)
+
+        # Defaults to Crossover UART because serial is attached to the HPS and cannot be used.
+        if kwargs["uart_name"] == "serial":
+            kwargs["uart_name"] = "crossover"
 
         # SoCCore ----------------------------------------------------------------------------------
         SoCCore.__init__(self, platform, sys_clk_freq,
-            ident          = "LiteX SoC on DE1-SoC",
+            ident          = "LiteX SoC on the Arrow SoCKit",
             ident_version  = True,
             **kwargs)
 
         # CRG --------------------------------------------------------------------------------------
         self.submodules.crg = _CRG(platform, sys_clk_freq)
 
-        # SDR SDRAM --------------------------------------------------------------------------------
-        if not self.integrated_main_ram_size:
-            self.submodules.sdrphy = GENSDRPHY(platform.request("sdram"), sys_clk_freq)
-            self.add_sdram("sdram",
-                phy                     = self.sdrphy,
-                module                  = IS42S16320(sys_clk_freq, "1:1"),
-                origin                  = self.mem_map["main_ram"],
-                size                    = kwargs.get("max_sdram_size", 0x40000000),
-                l2_cache_size           = kwargs.get("l2_size", 8192),
-                l2_cache_min_data_width = kwargs.get("min_l2_data_width", 128),
-                l2_cache_reverse        = True
-            )
+        # Leds -------------------------------------------------------------------------------------
+        self.submodules.leds = LedChaser(
+            pads         = platform.request_all("user_led"),
+            sys_clk_freq = sys_clk_freq)
+        self.add_csr("leds")
+
 
 # Build --------------------------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="LiteX SoC on DE1-SoC")
+    parser = argparse.ArgumentParser(description="LiteX SoC on SoCKit")
     parser.add_argument("--build",        action="store_true", help="Build bitstream")
     parser.add_argument("--load",         action="store_true", help="Load bitstream")
+    parser.add_argument("--revision",     default="revd",      help="Board revision: revb (default), revc or revd")
     parser.add_argument("--sys-clk-freq", default=50e6,        help="System clock frequency (default: 50MHz)")
     builder_args(parser)
     soc_sdram_args(parser)
@@ -88,6 +78,7 @@ def main():
 
     soc = BaseSoC(
         sys_clk_freq = int(float(args.sys_clk_freq)),
+        revision     = args.revision,
         **soc_sdram_argdict(args)
     )
     builder = Builder(soc, **builder_argdict(args))

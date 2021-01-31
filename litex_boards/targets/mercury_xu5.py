@@ -38,9 +38,9 @@ class _CRG(Module):
         self.submodules.pll = pll = USMMCM(speedgrade=-1)
         self.comb += pll.reset.eq(self.rst)
         pll.register_clkin(platform.request("clk100"), 100e6)
-
         pll.create_clkout(self.cd_pll4x, sys_clk_freq*4, buf=None, with_reset=False)
         pll.create_clkout(self.cd_idelay, 500e6, with_reset=False)
+        platform.add_false_path_constraints(self.cd_sys.clk, pll.clkin) # Ignore sys_clk to pll.clkin path created by SoC's rst.
 
         self.specials += [
             Instance("BUFGCE_DIV", name="main_bufgce_div",
@@ -73,8 +73,7 @@ class BaseSoC(SoCCore):
             self.submodules.ddrphy = usddrphy.USPDDRPHY(platform.request("ddram"),
                 memtype          = "DDR4",
                 sys_clk_freq     = sys_clk_freq,
-                iodelay_clk_freq = 500e6,
-                cmd_latency      = 0)
+                iodelay_clk_freq = 500e6)
             self.add_csr("ddrphy")
             self.add_sdram("sdram",
                 phy                     = self.ddrphy,

@@ -18,7 +18,6 @@ from litex.build.lattice.trellis import trellis_args, trellis_argdict
 
 from litex.soc.cores.clock import *
 from litex.soc.integration.soc_core import *
-from litex.soc.integration.soc_sdram import *
 from litex.soc.integration.builder import *
 from litex.soc.cores.led import LedChaser
 
@@ -91,7 +90,6 @@ class BaseSoC(SoCCore):
             self.submodules.ddrphy = ECP5DDRPHY(
                 platform.request("ddram"),
                 sys_clk_freq=sys_clk_freq)
-            self.add_csr("ddrphy")
             self.comb += self.crg.stop.eq(self.ddrphy.init.stop)
             self.add_sdram("sdram",
                 phy                     = self.ddrphy,
@@ -108,7 +106,6 @@ class BaseSoC(SoCCore):
             self.submodules.leds = LedChaser(
                 pads         = platform.request_all("user_led"),
                 sys_clk_freq = sys_clk_freq)
-            self.add_csr("leds")
 
 # Build --------------------------------------------------------------------------------------------
 
@@ -119,14 +116,14 @@ def main():
     parser.add_argument("--sys-clk-freq", default=81e6,        help="System clock frequency (default: 81MHz)")
     parser.add_argument("--toolchain",    default="trellis",   help="FPGA toolchain: trellis (default) or diamond")
     builder_args(parser)
-    soc_sdram_args(parser)
+    soc_core_args(parser)
     trellis_args(parser)
     args = parser.parse_args()
 
     soc = BaseSoC(
         sys_clk_freq = int(float(args.sys_clk_freq)),
         toolchain    = args.toolchain,
-        **soc_sdram_argdict(args)
+        **soc_core_argdict(args)
     )
     builder = Builder(soc, **builder_argdict(args))
     builder_kargs = trellis_argdict(args) if args.toolchain == "trellis" else {}

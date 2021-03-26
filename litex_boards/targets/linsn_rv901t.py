@@ -16,7 +16,6 @@ from litex.build.io import DDROutput
 from litex_boards.platforms import linsn_rv901t
 
 from litex.soc.integration.soc_core import *
-from litex.soc.integration.soc_sdram import *
 from litex.soc.integration.builder import *
 from litex.soc.cores.clock import S6PLL
 from litex.soc.cores.led import LedChaser
@@ -81,14 +80,12 @@ class BaseSoC(SoCCore):
             self.submodules.ethphy = LiteEthPHYRGMII(
                 clock_pads = self.platform.request("eth_clocks", eth_phy),
                 pads       = self.platform.request("eth", eth_phy))
-            self.add_csr("ethphy")
             self.add_ethernet(phy=self.ethphy)
 
         # Leds -------------------------------------------------------------------------------------
         self.submodules.leds = LedChaser(
             pads         = platform.request_all("user_led"),
             sys_clk_freq = sys_clk_freq)
-        self.add_csr("leds")
 
 # Build --------------------------------------------------------------------------------------------
 
@@ -100,12 +97,12 @@ def main():
     parser.add_argument("--with-ethernet", action="store_true", help="Enable Ethernet support")
     parser.add_argument("--eth-phy",       default=0, type=int, help="Ethernet PHY: 0 (default) or 1")
     builder_args(parser)
-    soc_sdram_args(parser)
+    soc_core_args(parser)
     args = parser.parse_args()
 
     soc = BaseSoC(
          sys_clk_freq = int(float(args.sys_clk_freq)),
-         **soc_sdram_argdict(args)
+         **soc_core_argdict(args)
     )
     builder = Builder(soc, **builder_argdict(args))
     builder.build(run=args.build)
